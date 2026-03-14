@@ -514,7 +514,9 @@ app.get("/api",(req,res)=>{
   }
 
   res.json({
-    phien:currentPhien, ket_qua:dice, tong:total, ketqua:taiXiu(total),
+    phien:currentPhien,
+    ket_qua:dice, tong:total, ketqua:taiXiu(total),
+    phien_du_doan:currentPhien+1,
     du_doan:ai.predict, do_tin_cay:ai.conf+"%",
     tin_hieu:ai.signal, pattern:ai.pattern, streak:ai.streak_len,
     entropy:ai.entropy, id:"@sewdangcap"
@@ -535,9 +537,11 @@ app.get("/sunlon",(req,res)=>{
     duDoan=ai.predict; doTinCay=ai.conf; usedAI=true
   }
 
+  const cp=last.session||history.length
   res.json({
-    phien:last.session||history.length,
+    phien:cp,
     ket_qua:dice, tong:total, ketqua:taiXiu(total),
+    phien_du_doan:cp+1,
     du_doan:duDoan, do_tin_cay:doTinCay+"%",
     pattern:cau.name, used_ai_fallback:usedAI, id:"@sewdangcap"
   })
