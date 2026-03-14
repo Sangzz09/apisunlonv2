@@ -1,11 +1,11 @@
 {
   "name": "sicbo-ultra-ai",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "type": "module",
-  "main": "server.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "start": "node index.js",
+    "dev": "node --watch index.js"
   },
   "dependencies": {
     "axios": "^1.6.0",
