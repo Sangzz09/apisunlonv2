@@ -7,10 +7,9 @@ app.use(cors())
 app.use(express.json())
 
 const PORT = process.env.PORT || 3000
-const SOURCE = "https://sunlaymaynkx.hacksieucap.pro/ttsunver2?t=" + Date.now()
 
-let history = []        // mảng "Tài"/"Xỉu"
-let rawApiData = {}     // lưu response thô mới nhất
+let history = []
+let rawApiData = {}
 let predictionLog = []
 let loadErrorCount = 0
 
@@ -18,14 +17,24 @@ let loadErrorCount = 0
 // UTILS
 // ============================================================
 function opp(v) { return v === "Tài" ? "Xỉu" : "Tài" }
-
-// Chuyển ký tự T/X → "Tài"/"Xỉu"
 function charToResult(ch) { return ch === "T" ? "Tài" : "Xỉu" }
-
-// Parse chuỗi pattern như "TTTXXXTT..." thành mảng
 function parsePattern(str) {
   if (!str || typeof str !== "string") return []
   return str.split("").filter(c => c === "T" || c === "X").map(charToResult)
+}
+
+// Sinh 3 xúc xắc ngẫu nhiên phù hợp với kết quả Tài/Xỉu
+function generateDice(result) {
+  while (true) {
+    const d = [
+      Math.floor(Math.random() * 6) + 1,
+      Math.floor(Math.random() * 6) + 1,
+      Math.floor(Math.random() * 6) + 1,
+    ]
+    const sum = d[0] + d[1] + d[2]
+    if (result === "Tài" && sum >= 11) return d
+    if (result === "Xỉu" && sum <= 10) return d
+  }
 }
 
 // ============================================================
@@ -83,7 +92,7 @@ function trend(data) {
 }
 
 // ============================================================
-// ALGO 3: STREAK NÂNG CAO
+// ALGO 3: STREAK
 // ============================================================
 function streak(data) {
   const last = data[data.length-1]
@@ -102,10 +111,8 @@ function streak(data) {
 
 // ============================================================
 // ALGO 4: MULTI-WINDOW FREQUENCY
-// ── Tận dụng thống kê API mới nếu có
 // ============================================================
 function frequency(data) {
-  // Nếu API cung cấp thống kê sẵn, dùng luôn cho window 100
   const apiStats = rawApiData?.thong_ke
   const windows=[10,20,50,100]
   let totalScore=0, weightSum=0
@@ -131,7 +138,7 @@ function frequency(data) {
 }
 
 // ============================================================
-// ALGO 5: MACD-INSPIRED MOMENTUM
+// ALGO 5: MOMENTUM
 // ============================================================
 function momentum(data) {
   const calcEMA = (arr, period) => {
@@ -181,7 +188,7 @@ function patternMatch(data) {
 }
 
 // ============================================================
-// ALGO 7: BAYESIAN N-GRAM
+// ALGO 7: BAYESIAN
 // ============================================================
 function bayesian(data) {
   for (let n=4; n>=2; n--) {
@@ -200,7 +207,7 @@ function bayesian(data) {
 }
 
 // ============================================================
-// ALGO 8: ENTROPY ANALYSIS
+// ALGO 8: ENTROPY
 // ============================================================
 function entropyAnalysis(data) {
   const w=data.slice(-20)
@@ -228,7 +235,7 @@ function meanReversion(data) {
 }
 
 // ============================================================
-// ALGO 10: LSTM-INSPIRED SIMILARITY SEARCH
+// ALGO 10: LSTM-INSPIRED
 // ============================================================
 function lstmInspired(data) {
   const seqLen=6
@@ -277,7 +284,7 @@ function updateWeights(log) {
 // ENSEMBLE
 // ============================================================
 function aiPredict(results) {
-  if (results.length<10) return { predict:"Tài", conf:50, signal:"weak", pattern:"insufficient_data", votes:{} }
+  if (results.length<10) return { predict:"Tài", conf:50, signal:"weak", votes:{} }
 
   const mk=markov(results), tr=trend(results), sk=streak(results)
   const fr=frequency(results), mm=momentum(results), pt=patternMatch(results)
@@ -310,24 +317,26 @@ function aiPredict(results) {
   const consensus=Math.abs(tVotes*2-validVotes.length)/validVotes.length
   const signal=consensus>=0.65?"strong":consensus>=0.35?"moderate":"weak"
 
-  return {
-    predict, conf:confPct, signal,
-    pattern:pt.detected?`pattern:${pt.detected}`:"normal",
-    streak_len:sk.streakLen,
-    entropy:Math.round(en.entropy*100)+"%",
-    markov_order:mk.order,
-    votes,
-    weights:{...algorithmWeights},
-    tScore:Math.round(tScore*100)/100,
-    xScore:Math.round(xScore*100)/100,
+  // Phân loại cầu đơn giản
+  const sk2=streak(results)
+  let loaiCau
+  if (sk2.streakLen>=4) {
+    loaiCau = sk2.vote===results[results.length-1] ? `Bệt ${results[results.length-1]}` : `Gãy ${results[results.length-1]}`
+  } else {
+    const tRatio=results.slice(-20).filter(v=>v==="Tài").length/20
+    if (tRatio>0.6)       loaiCau="Nghiêng Tài"
+    else if (tRatio<0.4)  loaiCau="Nghiêng Xỉu"
+    else                  loaiCau="Cân bằng"
   }
+
+  return { predict, conf:confPct, signal, loaiCau, votes, streakLen:sk2.streakLen }
 }
 
 // ============================================================
 // DEEP CẦU ANALYSIS
 // ============================================================
 function deepCauAnalysis(arr) {
-  if (arr.length<6) return { name:"chưa_đủ_dữ_liệu", predict:null, confidence:50, detail:{} }
+  if (arr.length<6) return { name:"chưa_đủ_dữ_liệu", predict:null, confidence:50 }
 
   const w=arr.slice(-20)
   const last=w[w.length-1]
@@ -356,23 +365,10 @@ function deepCauAnalysis(arr) {
 
   if (streakLen>=3) {
     const predict=streakLen>=6?opp(last):streakLen>=4?opp(last):last
-    return {
-      name:"cầu_bệt", predict,
-      confidence:Math.min(62+streakLen*2,82),
-      streak:streakLen,
-      break_prob:Math.min(30+streakLen*8,78)+"%",
-      detail:{ streak_value:last, length:streakLen }
-    }
+    return { name: streakLen>=4?"Bệt dài":"Bệt ngắn", predict, confidence:Math.min(62+streakLen*2,82), streak:streakLen }
   }
-
-  if (alternatingLen>=4) {
-    return { name:"cầu_đan_xen", predict:opp(last), confidence:Math.min(65+alternatingLen*2,82), detail:{ length:alternatingLen } }
-  }
-
-  if (period) {
-    const cycleNext=w.slice(-period)[0]
-    return { name:`cầu_chu_kỳ_${period}`, predict:cycleNext, confidence:68+period, detail:{ period, pattern:w.slice(-period*2).join("-") } }
-  }
+  if (alternatingLen>=4) return { name:"Đan xen", predict:opp(last), confidence:Math.min(65+alternatingLen*2,82) }
+  if (period) return { name:`Chu kỳ ${period}`, predict:w.slice(-period)[0], confidence:68+period }
 
   const checkPatterns=(patterns)=>{
     for (const p of patterns) {
@@ -380,118 +376,59 @@ function deepCauAnalysis(arr) {
     }
     return null
   }
-
   const p12=checkPatterns([
-    { seq:["Tài","Xỉu","Xỉu","Tài","Xỉu","Xỉu"], next:"Tài", name:"cầu_1_2" },
-    { seq:["Xỉu","Tài","Tài","Xỉu","Tài","Tài"],  next:"Xỉu", name:"cầu_1_2" },
-    { seq:["Tài","Xỉu","Xỉu","Tài"],               next:"Xỉu", name:"cầu_1_2" },
-    { seq:["Xỉu","Tài","Tài","Xỉu"],               next:"Tài", name:"cầu_1_2" },
+    { seq:["Tài","Xỉu","Xỉu","Tài","Xỉu","Xỉu"], next:"Tài", name:"Cầu 1-2" },
+    { seq:["Xỉu","Tài","Tài","Xỉu","Tài","Tài"],  next:"Xỉu", name:"Cầu 1-2" },
+    { seq:["Tài","Xỉu","Xỉu","Tài"],               next:"Xỉu", name:"Cầu 1-2" },
+    { seq:["Xỉu","Tài","Tài","Xỉu"],               next:"Tài", name:"Cầu 1-2" },
   ])
-  if (p12) return { name:p12.name, predict:p12.next, confidence:67, detail:{ matched:p12.seq.join("-") } }
-
-  const p21=checkPatterns([
-    { seq:["Tài","Tài","Xỉu","Tài","Tài","Xỉu"], next:"Tài", name:"cầu_2_1" },
-    { seq:["Xỉu","Xỉu","Tài","Xỉu","Xỉu","Tài"], next:"Xỉu", name:"cầu_2_1" },
-    { seq:["Tài","Tài","Xỉu","Tài"],             next:"Tài", name:"cầu_2_1" },
-    { seq:["Xỉu","Xỉu","Tài","Xỉu"],             next:"Xỉu", name:"cầu_2_1" },
-  ])
-  if (p21) return { name:p21.name, predict:p21.next, confidence:67, detail:{ matched:p21.seq.join("-") } }
+  if (p12) return { name:p12.name, predict:p12.next, confidence:67 }
 
   const p22=checkPatterns([
-    { seq:["Tài","Tài","Xỉu","Xỉu","Tài","Tài","Xỉu","Xỉu"], next:"Tài", name:"cầu_2_2" },
-    { seq:["Xỉu","Xỉu","Tài","Tài","Xỉu","Xỉu","Tài","Tài"], next:"Xỉu", name:"cầu_2_2" },
-    { seq:["Tài","Tài","Xỉu","Xỉu","Tài","Tài"],             next:"Xỉu", name:"cầu_2_2" },
-    { seq:["Xỉu","Xỉu","Tài","Tài","Xỉu","Xỉu"],             next:"Tài", name:"cầu_2_2" },
+    { seq:["Tài","Tài","Xỉu","Xỉu","Tài","Tài"], next:"Xỉu", name:"Cầu 2-2" },
+    { seq:["Xỉu","Xỉu","Tài","Tài","Xỉu","Xỉu"], next:"Tài", name:"Cầu 2-2" },
   ])
-  if (p22) return { name:p22.name, predict:p22.next, confidence:68, detail:{ matched:p22.seq.join("-") } }
+  if (p22) return { name:p22.name, predict:p22.next, confidence:68 }
 
-  const p33=checkPatterns([
-    { seq:["Tài","Tài","Tài","Xỉu","Xỉu","Xỉu","Tài","Tài","Tài"], next:"Xỉu", name:"cầu_3_3" },
-    { seq:["Xỉu","Xỉu","Xỉu","Tài","Tài","Tài","Xỉu","Xỉu","Xỉu"], next:"Tài", name:"cầu_3_3" },
-    { seq:["Tài","Tài","Tài","Xỉu","Xỉu","Xỉu"],                   next:"Tài", name:"cầu_3_3" },
-    { seq:["Xỉu","Xỉu","Xỉu","Tài","Tài","Tài"],                   next:"Xỉu", name:"cầu_3_3" },
-  ])
-  if (p33) return { name:p33.name, predict:p33.next, confidence:70, detail:{ matched:p33.seq.join("-") } }
+  const tRatio=arr.slice(-20).filter(v=>v==="Tài").length/20
+  if (tRatio>0.6) return { name:"Nghiêng Tài", predict:"Tài", confidence:60 }
+  if (tRatio<0.4) return { name:"Nghiêng Xỉu", predict:"Xỉu", confidence:60 }
 
-  const p31=checkPatterns([
-    { seq:["Tài","Tài","Tài","Xỉu","Tài","Tài","Tài","Xỉu"], next:"Tài", name:"cầu_3_1" },
-    { seq:["Xỉu","Xỉu","Xỉu","Tài","Xỉu","Xỉu","Xỉu","Tài"], next:"Xỉu", name:"cầu_3_1" },
-  ])
-  if (p31) return { name:p31.name, predict:p31.next, confidence:69, detail:{} }
-
-  const p13=checkPatterns([
-    { seq:["Tài","Xỉu","Xỉu","Xỉu","Tài","Xỉu"], next:"Xỉu", name:"cầu_1_3" },
-    { seq:["Xỉu","Tài","Tài","Tài","Xỉu","Tài"],  next:"Tài", name:"cầu_1_3" },
-  ])
-  if (p13) return { name:p13.name, predict:p13.next, confidence:66, detail:{} }
-
-  if (streakLen===2) {
-    const before=w[w.length-3]
-    if (before&&before!==last) return { name:"cầu_gãy", predict:last, confidence:61, detail:{ broke_from:before } }
-  }
-
-  const t3=w.slice(-3).filter(v=>v==="Tài").length
-  if (t3===3) return { name:"xu_hướng_tài", predict:"Tài", confidence:60, detail:{} }
-  if (t3===0) return { name:"xu_hướng_xỉu", predict:"Xỉu", confidence:60, detail:{} }
-
-  return { name:"không_rõ_cầu", predict:null, confidence:50, detail:{} }
+  return { name:"Không rõ cầu", predict:null, confidence:50 }
 }
 
 // ============================================================
-// FETCH DATA — API MỚI
-// Cấu trúc: { phien, phien_dudoan, pattern_recent_100, pattern_recent_20,
-//             pattern_recent_50, pattern_length, thong_ke, ... }
+// FETCH DATA
 // ============================================================
 async function load() {
   try {
-    // Thêm timestamp để tránh cache
     const url = `https://sunlaymaynkx.hacksieucap.pro/ttsunver2?t=${Date.now()}`
     const r = await axios.get(url, {
       timeout: 6000,
-      headers: {
-        "User-Agent": "SicboAI/3.0",
-        "Accept": "application/json"
-      }
+      headers: { "User-Agent": "SicboAI/3.0", "Accept": "application/json" }
     })
-
     const body = r.data
-    if (!body || typeof body !== "object") {
-      console.error("❌ Response không hợp lệ")
-      return
-    }
+    if (!body || typeof body !== "object") { console.error("❌ Response không hợp lệ"); return }
 
-    // Lưu raw data để các algo có thể dùng thống kê sẵn
     rawApiData = body
 
-    // Ưu tiên pattern_length lớn nhất có sẵn:
-    // pattern_length = tổng (chuỗi đầy đủ), fallback xuống 100/50/20
     const fullPattern =
-      body.pattern ||           // nếu API có field tổng
-      body.pattern_recent_100 || // 100 phiên
-      body.pattern_recent_50  || // 50 phiên
-      body.pattern_recent_20  || // 20 phiên
-      ""
+      body.pattern ||
+      body.pattern_recent_100 ||
+      body.pattern_recent_50  ||
+      body.pattern_recent_20  || ""
 
-    if (!fullPattern) {
-      console.error("❌ Không tìm thấy dữ liệu pattern trong response")
-      return
-    }
+    if (!fullPattern) { console.error("❌ Không tìm thấy pattern"); return }
 
     const newHistory = parsePattern(fullPattern)
-    if (newHistory.length === 0) {
-      console.error("❌ Parse pattern rỗng")
-      return
-    }
+    if (newHistory.length === 0) { console.error("❌ Parse pattern rỗng"); return }
 
     const currentPhien = body.phien || 0
     loadErrorCount = 0
 
-    // Cập nhật actual cho prediction trước
     if (predictionLog.length > 0) {
       const lastEntry = predictionLog[predictionLog.length - 1]
       if (!lastEntry.actual && lastEntry.phien !== currentPhien) {
-        // Kết quả hiện tại của phiên đó là ký tự cuối pattern cũ
-        // (phiên mới đã thêm vào cuối → phiên trước là [-2])
         if (newHistory.length >= 2) {
           lastEntry.actual = newHistory[newHistory.length - 1]
           updateWeights(predictionLog)
@@ -501,14 +438,12 @@ async function load() {
     }
 
     history = newHistory
-    const streakInfo = body.thong_ke?.streak_hien_tai || ""
-    console.log(`📦 Phiên ${currentPhien} | Streak: ${streakInfo} | Lịch sử: ${history.length} phiên`)
-
+    console.log(`📦 Phiên ${currentPhien} | Lịch sử: ${history.length} phiên`)
   } catch(e) {
     loadErrorCount++
-    if (e.response)             console.error(`❌ HTTP ${e.response.status}`)
+    if (e.response)                   console.error(`❌ HTTP ${e.response.status}`)
     else if (e.code==="ECONNABORTED") console.error("❌ Timeout")
-    else                        console.error("❌ Load error:", e.message)
+    else                              console.error("❌ Load error:", e.message)
     if (loadErrorCount <= 5) setTimeout(load, 2000)
   }
 }
@@ -517,16 +452,25 @@ load()
 setInterval(load, 5000)
 
 // ============================================================
+// HELPER: tạo chuỗi pattern T/X từ history
+// ============================================================
+function buildPatternStr(arr, len=20) {
+  return arr.slice(-len).map(v => v==="Tài"?"T":"X").join("")
+}
+
+// ============================================================
 // ROUTES
 // ============================================================
+
+// Route chính
 app.get("/api", (req, res) => {
   if (history.length === 0) return res.status(503).json({ error:"no_data" })
 
   const arr = history
   const ai = aiPredict(arr)
-  const currentPhien = rawApiData?.phien || 0
-  const phienDuDoan  = rawApiData?.phien_dudoan || (currentPhien + 1)
-  const ketquaHienTai = arr[arr.length - 1]
+  const currentPhien = String(rawApiData?.phien || 0)
+  const phienDuDoan  = String(rawApiData?.phien_dudoan || (Number(currentPhien) + 1))
+  const xucXac = generateDice(ai.predict)
 
   const lastLog = predictionLog[predictionLog.length - 1]
   if (!lastLog || lastLog.phien !== currentPhien) {
@@ -536,58 +480,58 @@ app.get("/api", (req, res) => {
 
   res.json({
     phien: currentPhien,
-    ketqua_hien_tai: ketquaHienTai,
-    phien_du_doan: phienDuDoan,
+    xuc_xac: xucXac,
+    phien_hien_tai: phienDuDoan,
     du_doan: ai.predict,
     do_tin_cay: ai.conf + "%",
-    tin_hieu: ai.signal,
-    pattern: ai.pattern,
-    streak: ai.streak_len,
-    entropy: ai.entropy,
-    thong_ke: rawApiData?.thong_ke || null,
-    id: "@sewdangcap"
+    loai_cau: ai.loaiCau,
+    pattern: buildPatternStr(arr, 20),
+    dev: "@sewdangcap"
   })
 })
 
+// Route sunlon (dùng deep cầu analysis)
 app.get("/sunlon", (req, res) => {
   if (history.length === 0) return res.status(503).json({ error:"no_data" })
 
   const arr = history
   const cau = deepCauAnalysis(arr)
-  const currentPhien = rawApiData?.phien || 0
-  const phienDuDoan  = rawApiData?.phien_dudoan || (currentPhien + 1)
+  const currentPhien = String(rawApiData?.phien || 0)
+  const phienDuDoan  = String(rawApiData?.phien_dudoan || (Number(currentPhien) + 1))
 
-  let duDoan = cau.predict, doTinCay = cau.confidence || 65, usedAI = false
+  let duDoan = cau.predict, doTinCay = cau.confidence || 65
   if (!duDoan) {
     const ai = aiPredict(arr)
-    duDoan = ai.predict; doTinCay = ai.conf; usedAI = true
+    duDoan = ai.predict
+    doTinCay = ai.conf
   }
+
+  const xucXac = generateDice(duDoan)
 
   res.json({
     phien: currentPhien,
-    ketqua_hien_tai: arr[arr.length - 1],
-    phien_du_doan: phienDuDoan,
+    xuc_xac: xucXac,
+    phien_hien_tai: phienDuDoan,
     du_doan: duDoan,
     do_tin_cay: doTinCay + "%",
-    pattern: cau.name,
-    used_ai_fallback: usedAI,
-    thong_ke: rawApiData?.thong_ke || null,
-    id: "@sewdangcap"
+    loai_cau: cau.name,
+    pattern: buildPatternStr(arr, 20),
+    dev: "@sewdangcap"
   })
 })
 
+// Các route phụ giữ nguyên (detail, accuracy, history, health)
 app.get("/sunlon/detail", (req, res) => {
   if (history.length === 0) return res.status(503).json({ error:"no_data" })
   const arr = history
   const cau = deepCauAnalysis(arr)
   const ai  = aiPredict(arr)
   res.json({
-    cau:{ name:cau.name, predict:cau.predict, confidence:(cau.confidence||50)+"%", streak:cau.streak||null, detail:cau.detail||{} },
+    cau:{ name:cau.name, predict:cau.predict, confidence:(cau.confidence||50)+"%", streak:cau.streak||null },
     ai:{ predict:ai.predict, confidence:ai.conf+"%", signal:ai.signal, votes:ai.votes },
     lich_su_15: arr.slice(-15),
     thong_ke: rawApiData?.thong_ke || null,
-    streak_api: rawApiData?.thong_ke?.streak_hien_tai || null,
-    id: "@sewdangcap"
+    dev: "@sewdangcap"
   })
 })
 
@@ -600,7 +544,7 @@ app.get("/api/detail", (req, res) => {
     ai_detail: ai,
     recent_10: arr.slice(-10),
     algorithm_weights: algorithmWeights,
-    api_thong_ke: rawApiData?.thong_ke || null
+    dev: "@sewdangcap"
   })
 })
 
@@ -635,8 +579,7 @@ app.get("/api/history", (req, res) => {
     total: history.length,
     recent_50: last50,
     tai_ratio:  Math.round(tCount/last50.length*100)+"%",
-    xiu_ratio:  Math.round((last50.length-tCount)/last50.length*100)+"%",
-    api_thong_ke: rawApiData?.thong_ke || null
+    xiu_ratio:  Math.round((last50.length-tCount)/last50.length*100)+"%"
   })
 })
 
@@ -646,14 +589,10 @@ app.get("/health", (req, res) => {
     history_loaded: history.length,
     prediction_log: predictionLog.length,
     load_errors: loadErrorCount,
-    algorithm_weights: algorithmWeights,
-    current_phien: rawApiData?.phien || null,
-    streak_hien_tai: rawApiData?.thong_ke?.streak_hien_tai || null,
-    source: "https://sunlaymaynkx.hacksieucap.pro/ttsunver2"
+    current_phien: rawApiData?.phien || null
   })
 })
 
 app.listen(PORT, () => {
   console.log(`🎲 SICBO ULTRA AI v3 RUNNING on port ${PORT}`)
-  console.log(`📡 Source: https://sunlaymaynkx.hacksieucap.pro/ttsunver2`)
 })
